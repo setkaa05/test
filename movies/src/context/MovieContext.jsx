@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useEffect } from "react";
+import { createContext, useContext, useReducer, useEffect, useRef } from "react";
 import MovieReducer from "../reducer/MovieReducer";
 import axios from "axios";
 import { getToken, getDataset } from "../api/api";
@@ -13,16 +13,20 @@ export const MovieContext = createContext();
 
 export const MovieProvider = ({ children }) => {
   const [state, dispatch] = useReducer(MovieReducer, initialState);
+  const hasFetched = useRef(false);
 
-  // Fetch movies from server
+  // Fetch movies from server (centralized, single-call guard)
   useEffect(() => {
+    if (hasFetched.current) return;
+    hasFetched.current = true;
+
     const fetchMovies = async () => {
       try {
         // Step 1: Get Token
         const tokenRes = await getToken(
           "20084016", // replace during exam
           "264006", // replace during exam
-          "movies", // dataset set
+          "movies",
         );
 
         // Step 2: Fetch dataset
@@ -30,7 +34,14 @@ export const MovieProvider = ({ children }) => {
 
         dispatch({ type: "SET_MOVIES", payload: movies });
       } catch (err) {
-        console.error("Error fetching data:", err.message);
+        // Handle rate limit gracefully and avoid immediate retries
+        if (err && err.response && err.response.status === 429) {
+          console.warn("Rate limit hit. Stop refetching.");
+        } else {
+          console.error("Error fetching data:", err?.message || err);
+        }
+        // Ensure app doesn't stay in loading state after a failed fetch
+        dispatch({ type: "SET_MOVIES", payload: [] });
       }
     };
 
